@@ -1,0 +1,17 @@
+node_modules/
+coverage/
+dist/
+build/
+logs/
+*.log
+npm-debug.log*
+
+# Local secrets & personal overrides — never committed.
+.env
+.env.local
+.env.*.local
+
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/settings.json

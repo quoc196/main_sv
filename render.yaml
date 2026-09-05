@@ -1,0 +1,40 @@
+services:
+  - type: web
+    name: main-sv
+    runtime: node
+    plan: free
+    region: singapore
+    branch: main
+    buildCommand: npm ci
+    startCommand: npm start
+    # Liveness probe lives outside the API prefix and the rate limiter.
+    healthCheckPath: /health/live
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.22.2
+      # PORT is injected by Render — do not set it here.
+      - key: APP_NAME
+        value: main-sv
+      - key: HOST
+        value: 0.0.0.0
+      - key: API_PREFIX
+        value: /api/v1
+      - key: LOG_LEVEL
+        value: info
+      - key: LOG_PRETTY
+        value: "false"
+      # Replace with your frontend origins once you have them.
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: RATE_LIMIT_MAX
+        value: "100"
+      - key: SHUTDOWN_TIMEOUT_MS
+        value: "15000"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 1d
