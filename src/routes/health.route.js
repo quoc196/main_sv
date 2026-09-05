@@ -21,7 +21,7 @@ router.get('/ready', async (_req, res) => {
 
 router.get('/', (_req, res) => {
   res.json({
-    status: 'ok',
+    status: 'success',
     app: config.app.name,
     env: config.env,
     uptime: Math.round(process.uptime()),
