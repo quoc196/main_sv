@@ -153,3 +153,32 @@ docker run -e NODE_ENV=production -e JWT_SECRET=... -e DATABASE_URL=... image
 
 Server nhận SIGTERM sẽ ngừng nhận request mới, chờ request đang chạy xong (tối đa
 `SHUTDOWN_TIMEOUT_MS`) rồi mới thoát — deploy không rớt request.
+
+### Render
+
+`render.yaml` khai báo 2 service web, mỗi service bám một branch:
+
+| Branch | Service | `NODE_ENV` | Log | Rate limit |
+|---|---|---|---|---|
+| `staging` | `main-sv-staging` | `staging` | `debug` | 300 |
+| `main` | `main-sv` | `production` | `info` | 100 |
+
+Tạo lần đầu: Render → **New → Blueprint** → chọn repo → **Apply**. Render đọc
+`render.yaml` từ branch của Blueprint (`main`) và dựng cả hai service cùng lúc.
+
+Sau đó mỗi push vào `staging` deploy staging, mỗi push vào `main` deploy production:
+
+```bash
+git push origin staging          # -> main-sv-staging
+git checkout main && git merge staging && git push origin main   # -> main-sv
+```
+
+`PORT` do Render tự inject nên không khai báo trong `render.yaml`; dotenv không ghi đè
+process env thật nên giá trị của Render luôn thắng `PORT` trong `.env.*`.
+
+`JWT_SECRET` dùng `generateValue: true` — Render sinh riêng cho từng service, hai môi
+trường không dùng chung secret. `DATABASE_URL` và các secret khác điền trong dashboard
+của từng service, không commit vào file env.
+
+Sửa `render.yaml` chỉ có hiệu lực khi thay đổi đã nằm trên `main` — sửa trên nhánh
+`staging` thôi thì Render chưa đọc.

@@ -1,4 +1,54 @@
+# Two long-lived environments, one blueprint.
+#   branch staging -> main-sv-staging (NODE_ENV=staging)
+#   branch main    -> main-sv         (NODE_ENV=production)
+#
+# Render reads this file from the branch the Blueprint is linked to (main).
+# Editing it on `staging` alone has no effect until the change lands on main.
+#
+# PORT is injected by Render and must not be declared here: dotenv never
+# overrides real process env, so Render's value wins over the .env.* files.
+
 services:
+  # ----------------------------------------------------------------- staging
+  - type: web
+    name: main-sv-staging
+    runtime: node
+    plan: free
+    region: singapore
+    branch: staging
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /health/live
+    envVars:
+      - key: NODE_ENV
+        value: staging
+      - key: NODE_VERSION
+        value: 22.22.2
+      - key: APP_NAME
+        value: main-sv-staging
+      - key: HOST
+        value: 0.0.0.0
+      - key: API_PREFIX
+        value: /api/v1
+      - key: LOG_LEVEL
+        value: debug
+      - key: LOG_PRETTY
+        value: "false"
+      # Loosen to your staging frontend origin once it exists.
+      - key: CORS_ORIGINS
+        value: "*"
+      - key: RATE_LIMIT_WINDOW_MS
+        value: "60000"
+      - key: RATE_LIMIT_MAX
+        value: "300"
+      - key: SHUTDOWN_TIMEOUT_MS
+        value: "10000"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 1d
+
+  # -------------------------------------------------------------- production
   - type: web
     name: main-sv
     runtime: node
@@ -7,14 +57,12 @@ services:
     branch: main
     buildCommand: npm ci
     startCommand: npm start
-    # Liveness probe lives outside the API prefix and the rate limiter.
     healthCheckPath: /health/live
     envVars:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
         value: 22.22.2
-      # PORT is injected by Render — do not set it here.
       - key: APP_NAME
         value: main-sv
       - key: HOST
@@ -25,7 +73,7 @@ services:
         value: info
       - key: LOG_PRETTY
         value: "false"
-      # Replace with your frontend origins once you have them.
+      # Replace with your production frontend origins.
       - key: CORS_ORIGINS
         value: "*"
       - key: RATE_LIMIT_WINDOW_MS
@@ -34,6 +82,7 @@ services:
         value: "100"
       - key: SHUTDOWN_TIMEOUT_MS
         value: "15000"
+      # Generated once, per service — staging and production never share it.
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
