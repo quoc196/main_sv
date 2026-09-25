@@ -1,0 +1,76 @@
+name: CI
+
+# Render deploys straight off these branches, so every push has to pass here
+# before it can reach staging or production.
+on:
+  push:
+    branches: [staging, main]
+  pull_request:
+    branches: [staging, main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    # A real Postgres, so the SQL in the service layer is actually exercised
+    # instead of the users suite quietly skipping itself.
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: main_sv_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/main_sv_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Format check
+        run: npx prettier --check "**/*.{js,json,md}"
+
+      - name: Migrate
+        run: npm run db:migrate
+
+      - name: Test
+        run: npm test
+
+      # A migration that cannot be undone is a migration you cannot roll back a
+      # deploy past, so the down path is exercised too.
+      - name: Rollback is reversible
+        run: npm run db:rollback && npm run db:migrate
+
+      # Only runtime dependencies ship, so only those gate the build.
+      - name: Audit runtime dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      # Catches a bad .env.production / missing guard before Render does.
+      - name: Production config boots
+        env:
+          NODE_ENV: production
+          JWT_SECRET: ci-placeholder-secret-value
+          CORS_ORIGINS: https://example.com
+        run: npm run env:check > /dev/null
