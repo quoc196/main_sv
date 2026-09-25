@@ -16,7 +16,7 @@ services:
     plan: free
     region: singapore
     branch: staging
-    buildCommand: npm ci --omit=dev
+    buildCommand: npm ci && npm run db:migrate && npm prune --omit=dev
     startCommand: npm start
     healthCheckPath: /health/live
     envVars:
@@ -39,6 +39,16 @@ services:
       # frontend exists.
       - key: CORS_ORIGINS
         value: "*"
+      # Neon/Supabase: use the POOLED string here (hostname with -pooler) and
+      # the direct one for DATABASE_URL_UNPOOLED, which migrations need — a
+      # transaction-mode pooler cannot hold their advisory lock. Plain Postgres
+      # with no pooler in front: set DATABASE_URL only.
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
+      - key: DB_POOL_MAX
+        value: "5"
       - key: RATE_LIMIT_WINDOW_MS
         value: "60000"
       - key: RATE_LIMIT_MAX
@@ -57,7 +67,7 @@ services:
     plan: free
     region: singapore
     branch: main
-    buildCommand: npm ci --omit=dev
+    buildCommand: npm ci && npm run db:migrate && npm prune --omit=dev
     startCommand: npm start
     healthCheckPath: /health/live
     envVars:
@@ -80,6 +90,16 @@ services:
       # with "*" when NODE_ENV=production, so this must not be committed here.
       - key: CORS_ORIGINS
         sync: false
+      # Neon/Supabase: use the POOLED string here (hostname with -pooler) and
+      # the direct one for DATABASE_URL_UNPOOLED, which migrations need — a
+      # transaction-mode pooler cannot hold their advisory lock. Plain Postgres
+      # with no pooler in front: set DATABASE_URL only.
+      - key: DATABASE_URL
+        sync: false
+      - key: DATABASE_URL_UNPOOLED
+        sync: false
+      - key: DB_POOL_MAX
+        value: "5"
       - key: RATE_LIMIT_WINDOW_MS
         value: "60000"
       - key: RATE_LIMIT_MAX

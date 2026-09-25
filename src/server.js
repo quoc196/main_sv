@@ -1,6 +1,7 @@
 import app from './app.js';
 import config from './config/index.js';
 import logger from './config/logger.js';
+import * as db from './db/index.js';
 
 if (config.cors.allowAll && !config.isTest) {
   logger.warn(
@@ -8,6 +9,10 @@ if (config.cors.allowAll && !config.isTest) {
       'requests against a wildcard. Set explicit origins before shipping a browser client.'
   );
 }
+
+// Connect first: a bad DATABASE_URL should fail the deploy here, not turn into
+// 500s once the health check has already reported the instance as live.
+await db.connect();
 
 const server = app.listen(config.app.port, config.app.host, () => {
   logger.info(
@@ -46,7 +51,12 @@ async function shutdown(signal, exitCode = 0) {
       process.exit(1);
     }
 
-    // Close DB / cache / queue connections here.
+    // In-flight requests are done, so nothing needs the pool any more.
+    try {
+      await db.disconnect();
+    } catch (closeErr) {
+      logger.error({ err: closeErr }, 'Error while closing the database pool');
+    }
 
     logger.info('Shutdown complete');
     process.exit(exitCode);

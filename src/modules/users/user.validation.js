@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+/**
+ * Lower-cased and trimmed here so the UNIQUE index on users.email is actually
+ * case-insensitive: "A@b.com" and "a@b.com" must not both be storable.
+ */
+const email = z.string().trim().toLowerCase().email();
+
 export const listUsersSchema = {
   query: z.object({
     page: z.coerce.number().int().positive().default(1),
@@ -15,7 +21,7 @@ export const getUserSchema = {
 export const createUserSchema = {
   body: z.object({
     name: z.string().trim().min(1).max(120),
-    email: z.string().email(),
+    email,
   }),
 };
 
@@ -24,7 +30,7 @@ export const updateUserSchema = {
   body: z
     .object({
       name: z.string().trim().min(1).max(120).optional(),
-      email: z.string().email().optional(),
+      email: email.optional(),
     })
     .refine((v) => Object.keys(v).length > 0, { message: 'At least one field is required' }),
 };

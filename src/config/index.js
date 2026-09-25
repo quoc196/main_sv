@@ -33,8 +33,21 @@ const schema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
 
-  // Optional infrastructure — fill in when you plug a real DB / cache in.
+  // The app runs without a database (in-memory fallback) when this is unset.
   DATABASE_URL: z.string().optional(),
+  /**
+   * Migrations, pg_dump and anything needing session state must bypass the
+   * pooler: PgBouncer in transaction mode (Neon, Supabase, RDS Proxy) rejects
+   * SET, temp tables and advisory locks held across statements. Falls back to
+   * DATABASE_URL for a plain Postgres with no pooler in front.
+   */
+  DATABASE_URL_UNPOOLED: z.string().optional(),
+  // One instance on a small plan does not need a wide pool; the pooler upstream
+  // is what fans out. Too many idle connections is how a free tier runs out.
+  DB_POOL_MAX: z.coerce.number().int().positive().max(100).default(5),
+  DB_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+  DB_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+
   REDIS_URL: z.string().optional(),
 
   JWT_SECRET: z.string().min(16).optional(),
@@ -102,6 +115,10 @@ const config = {
 
   db: {
     url: env.DATABASE_URL,
+    directUrl: env.DATABASE_URL_UNPOOLED || env.DATABASE_URL,
+    poolMax: env.DB_POOL_MAX,
+    idleTimeoutMs: env.DB_IDLE_TIMEOUT_MS,
+    connectTimeoutMs: env.DB_CONNECT_TIMEOUT_MS,
   },
 
   redis: {
@@ -117,6 +134,13 @@ const config = {
 // Secrets are only truly optional outside production.
 if (config.isProduction && !config.jwt.secret) {
   console.error('[config] JWT_SECRET is required when NODE_ENV=production.');
+  process.exit(1);
+}
+
+// The in-memory fallback loses every write on restart and is not shared between
+// instances, so it is a local convenience only.
+if (config.isProduction && !config.db.url) {
+  console.error('[config] DATABASE_URL is required when NODE_ENV=production.');
   process.exit(1);
 }
 
