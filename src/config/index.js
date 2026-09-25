@@ -89,6 +89,10 @@ const config = {
 
   cors: {
     origins: env.CORS_ORIGINS,
+    allowAll: env.CORS_ORIGINS.includes('*'),
+    // Reflecting the caller's origin AND allowing credentials lets any site
+    // call this API with the visitor's cookies, so the two are never combined.
+    credentials: !env.CORS_ORIGINS.includes('*'),
   },
 
   rateLimit: {
@@ -113,6 +117,16 @@ const config = {
 // Secrets are only truly optional outside production.
 if (config.isProduction && !config.jwt.secret) {
   console.error('[config] JWT_SECRET is required when NODE_ENV=production.');
+  process.exit(1);
+}
+
+// A wildcard is a convenience for local work; in production it means every
+// site on the internet is an allowed caller, which is never the intent.
+if (config.isProduction && config.cors.allowAll) {
+  console.error(
+    '[config] CORS_ORIGINS="*" is not allowed when NODE_ENV=production.\n' +
+      '         List the exact frontend origins, comma-separated.'
+  );
   process.exit(1);
 }
 

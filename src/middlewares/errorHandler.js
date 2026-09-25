@@ -38,6 +38,15 @@ export default function errorHandler(err, req, res, _next) {
   if (error.statusCode >= 500) log.error(payload, error.message);
   else log.warn(payload, error.message);
 
+  // The status line is already on the wire (a stream broke mid-response, or
+  // something answered twice), so there is no way to turn this into a JSON
+  // error. Cut the socket: a truncated body tells the client it went wrong,
+  // while res.json() here would only throw ERR_HTTP_HEADERS_SENT.
+  if (res.headersSent) {
+    res.destroy(error);
+    return;
+  }
+
   // Internal failures must never leak their message outside development.
   const exposeMessage = error.statusCode < 500 || config.isDevelopment;
 

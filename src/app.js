@@ -25,8 +25,8 @@ app.use(httpLogger);
 app.use(helmet());
 app.use(
   cors({
-    origin: config.cors.origins.includes('*') ? true : config.cors.origins,
-    credentials: true,
+    origin: config.cors.allowAll ? '*' : config.cors.origins,
+    credentials: config.cors.credentials,
   })
 );
 app.use(compression());

@@ -1,7 +1,7 @@
 import js from '@eslint/js';
 
 export default [
-  { ignores: ['node_modules/**', 'coverage/**', 'dist/**'] },
+  { ignores: ['node_modules/**', 'coverage/**', 'dist/**', '**/tempCodeRunnerFile.js'] },
   js.configs.recommended,
   {
     files: ['**/*.js'],

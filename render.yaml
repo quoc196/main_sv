@@ -16,7 +16,7 @@ services:
     plan: free
     region: singapore
     branch: staging
-    buildCommand: npm ci
+    buildCommand: npm ci --omit=dev
     startCommand: npm start
     healthCheckPath: /health/live
     envVars:
@@ -34,7 +34,9 @@ services:
         value: debug
       - key: LOG_PRETTY
         value: "false"
-      # Loosen to your staging frontend origin once it exists.
+      # Wildcard is tolerated here: credentialed requests are refused against a
+      # wildcard, so there are no cookies to steal. Narrow it once a staging
+      # frontend exists.
       - key: CORS_ORIGINS
         value: "*"
       - key: RATE_LIMIT_WINDOW_MS
@@ -55,7 +57,7 @@ services:
     plan: free
     region: singapore
     branch: main
-    buildCommand: npm ci
+    buildCommand: npm ci --omit=dev
     startCommand: npm start
     healthCheckPath: /health/live
     envVars:
@@ -73,9 +75,11 @@ services:
         value: info
       - key: LOG_PRETTY
         value: "false"
-      # Replace with your production frontend origins.
+      # Set in the Render dashboard, comma-separated (e.g.
+      # https://example.com,https://www.example.com). The app refuses to boot
+      # with "*" when NODE_ENV=production, so this must not be committed here.
       - key: CORS_ORIGINS
-        value: "*"
+        sync: false
       - key: RATE_LIMIT_WINDOW_MS
         value: "60000"
       - key: RATE_LIMIT_MAX
