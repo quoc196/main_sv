@@ -9,8 +9,11 @@ import errorHandler from './middlewares/errorHandler.js';
 import httpLogger from './middlewares/httpLogger.js';
 import notFound from './middlewares/notFound.js';
 import requestId from './middlewares/requestId.js';
+import response from './middlewares/response.js';
 import healthRoutes from './routes/health.route.js';
 import apiRoutes from './routes/index.js';
+import ApiError from './utils/ApiError.js';
+import { CODES } from './utils/response.js';
 
 const app = express();
 
@@ -21,6 +24,7 @@ app.disable('x-powered-by');
 
 app.use(requestId);
 app.use(httpLogger);
+app.use(response);
 
 app.use(helmet());
 app.use(
@@ -45,6 +49,9 @@ app.use(
     standardHeaders: 'draft-7',
     legacyHeaders: false,
     skip: () => config.isTest,
+    // Routed through the error handler so a throttled caller gets the same
+    // envelope as every other failure, not express-rate-limit's own body.
+    handler: (_req, _res, next) => next(new ApiError(429, CODES.TOO_MANY_REQUESTS.message)),
   }),
   apiRoutes
 );

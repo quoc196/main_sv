@@ -1,12 +1,24 @@
-/** Error carrying an HTTP status; anything else is treated as a 500. */
+/**
+ * Error carrying an HTTP status; anything else is treated as a 500.
+ *
+ * `message` is written for whoever reads the logs, so it can name ids, emails
+ * and internals freely. `userMessage` is the only thing allowed on the wire —
+ * the frontend shows it verbatim per `err_show_type`, so leave it out and the
+ * response falls back to the neutral copy in CODES.
+ */
 export default class ApiError extends Error {
-  constructor(statusCode, message, { code, details, isOperational = true, cause } = {}) {
+  constructor(
+    statusCode,
+    message,
+    { code, details, isOperational = true, cause, userMessage } = {}
+  ) {
     super(message, { cause });
     this.name = 'ApiError';
     this.statusCode = statusCode;
     this.code = code ?? httpCode(statusCode);
     this.details = details;
     this.isOperational = isOperational;
+    this.userMessage = userMessage;
     Error.captureStackTrace?.(this, ApiError);
   }
 
