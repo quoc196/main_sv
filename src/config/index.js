@@ -33,8 +33,21 @@ const schema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
 
-  // Optional infrastructure — fill in when you plug a real DB / cache in.
+  // Unset: the app still boots and /health* works, but DB-backed routes answer 503.
   DATABASE_URL: z.string().optional(),
+  /**
+   * Migrations, pg_dump and anything needing session state must bypass the
+   * pooler: PgBouncer in transaction mode (Neon, Supabase, RDS Proxy) rejects
+   * SET, temp tables and advisory locks held across statements. Falls back to
+   * DATABASE_URL for a plain Postgres with no pooler in front.
+   */
+  DATABASE_URL_UNPOOLED: z.string().optional(),
+  // One instance on a small plan does not need a wide pool; the pooler upstream
+  // is what fans out. Too many idle connections is how a free tier runs out.
+  DB_POOL_MAX: z.coerce.number().int().positive().max(100).default(5),
+  DB_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+  DB_CONNECT_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+
   REDIS_URL: z.string().optional(),
 
   JWT_SECRET: z.string().min(16).optional(),
@@ -89,6 +102,10 @@ const config = {
 
   cors: {
     origins: env.CORS_ORIGINS,
+    allowAll: env.CORS_ORIGINS.includes('*'),
+    // Reflecting the caller's origin AND allowing credentials lets any site
+    // call this API with the visitor's cookies, so the two are never combined.
+    credentials: !env.CORS_ORIGINS.includes('*'),
   },
 
   rateLimit: {
@@ -98,6 +115,10 @@ const config = {
 
   db: {
     url: env.DATABASE_URL,
+    directUrl: env.DATABASE_URL_UNPOOLED || env.DATABASE_URL,
+    poolMax: env.DB_POOL_MAX,
+    idleTimeoutMs: env.DB_IDLE_TIMEOUT_MS,
+    connectTimeoutMs: env.DB_CONNECT_TIMEOUT_MS,
   },
 
   redis: {
@@ -113,6 +134,23 @@ const config = {
 // Secrets are only truly optional outside production.
 if (config.isProduction && !config.jwt.secret) {
   console.error('[config] JWT_SECRET is required when NODE_ENV=production.');
+  process.exit(1);
+}
+
+// Booting without a database is a local convenience; production would come up
+// "healthy" and then 503 every real request.
+if (config.isProduction && !config.db.url) {
+  console.error('[config] DATABASE_URL is required when NODE_ENV=production.');
+  process.exit(1);
+}
+
+// A wildcard is a convenience for local work; in production it means every
+// site on the internet is an allowed caller, which is never the intent.
+if (config.isProduction && config.cors.allowAll) {
+  console.error(
+    '[config] CORS_ORIGINS="*" is not allowed when NODE_ENV=production.\n' +
+      '         List the exact frontend origins, comma-separated.'
+  );
   process.exit(1);
 }
 

@@ -1,6 +1,18 @@
 import app from './app.js';
 import config from './config/index.js';
 import logger from './config/logger.js';
+import * as db from './db/index.js';
+
+if (config.cors.allowAll && !config.isTest) {
+  logger.warn(
+    'CORS_ORIGINS="*" — every origin is allowed, and browsers refuse credentialed ' +
+      'requests against a wildcard. Set explicit origins before shipping a browser client.'
+  );
+}
+
+// Connect first: a bad DATABASE_URL should fail the deploy here, not turn into
+// 500s once the health check has already reported the instance as live.
+await db.connect();
 
 const server = app.listen(config.app.port, config.app.host, () => {
   logger.info(
@@ -16,10 +28,15 @@ const server = app.listen(config.app.port, config.app.host, () => {
 
 let shuttingDown = false;
 
-async function shutdown(signal) {
+/**
+ * `exitCode` is 0 only for a shutdown we asked for. A fatal error leaves the
+ * process in an unknown state, and exiting 0 there would tell the orchestrator
+ * everything ended normally — no restart, no alert.
+ */
+async function shutdown(signal, exitCode = 0) {
   if (shuttingDown) return;
   shuttingDown = true;
-  logger.info({ signal }, 'Shutting down...');
+  logger.info({ signal, exitCode }, 'Shutting down...');
 
   // Hard limit: stop waiting for in-flight requests after the grace period.
   const timer = setTimeout(() => {
@@ -34,10 +51,15 @@ async function shutdown(signal) {
       process.exit(1);
     }
 
-    // Close DB / cache / queue connections here.
+    // In-flight requests are done, so nothing needs the pool any more.
+    try {
+      await db.disconnect();
+    } catch (closeErr) {
+      logger.error({ err: closeErr }, 'Error while closing the database pool');
+    }
 
     logger.info('Shutdown complete');
-    process.exit(0);
+    process.exit(exitCode);
   });
 }
 
@@ -47,12 +69,12 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 
 process.on('unhandledRejection', (reason) => {
   logger.fatal({ err: reason }, 'Unhandled promise rejection');
-  shutdown('unhandledRejection');
+  shutdown('unhandledRejection', 1);
 });
 
 process.on('uncaughtException', (err) => {
   logger.fatal({ err }, 'Uncaught exception');
-  shutdown('uncaughtException');
+  shutdown('uncaughtException', 1);
 });
 
 export default server;

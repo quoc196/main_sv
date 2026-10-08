@@ -1,65 +1,112 @@
-import { randomUUID } from 'node:crypto';
+import { query } from '../../db/index.js';
 import ApiError from '../../utils/ApiError.js';
 
 /**
- * In-memory store standing in for a real repository — swap the body of these
- * functions for DB calls, the signatures are what the controller depends on.
+ * The repository for `users`. Controllers depend on these signatures, not on
+ * how the rows are fetched, so this is the only file that knows any SQL.
  */
-const users = new Map();
 
-function seed() {
-  const now = new Date().toISOString();
-  const id = randomUUID();
-  users.set(id, { id, name: 'Demo User', email: 'demo@example.com', createdAt: now, updatedAt: now });
-}
-seed();
+/** Postgres raises this when a UNIQUE constraint rejects a row. */
+const UNIQUE_VIOLATION = '23505';
+
+// snake_case in the database, camelCase on the wire — aliased once, here.
+const COLUMNS = 'id, name, email, created_at AS "createdAt", updated_at AS "updatedAt"';
+
+/**
+ * `%` and `_` are ILIKE wildcards, so a search for "a_b" would otherwise match
+ * "axb". Escaping them keeps the query literal, which is what a user typing in
+ * a search box expects.
+ */
+const escapeLike = (value) => value.replace(/[\\%_]/g, '\\$&');
+
+/**
+ * A leading `%` means no index can serve this; it is fine at demo scale. For a
+ * real table, add pg_trgm and a GIN index on (name, email) instead.
+ */
+const SEARCH_FILTER = '($1::text IS NULL OR name ILIKE $1 OR email ILIKE $1)';
 
 export async function list({ page, limit, q }) {
-  let items = [...users.values()];
+  const pattern = q ? `%${escapeLike(q)}%` : null;
 
-  if (q) {
-    const needle = q.toLowerCase();
-    items = items.filter(
-      (u) => u.name.toLowerCase().includes(needle) || u.email.toLowerCase().includes(needle)
-    );
-  }
+  // Ordered by (created_at, id) so the sort is total: without the id tiebreak,
+  // rows sharing a timestamp could repeat or vanish across pages.
+  const [items, counted] = await Promise.all([
+    query(
+      `SELECT ${COLUMNS}
+         FROM users
+        WHERE ${SEARCH_FILTER}
+        ORDER BY created_at DESC, id DESC
+        LIMIT $2 OFFSET $3`,
+      [pattern, limit, (page - 1) * limit]
+    ),
+    query(`SELECT count(*)::int AS total FROM users WHERE ${SEARCH_FILTER}`, [pattern]),
+  ]);
 
-  const total = items.length;
-  const start = (page - 1) * limit;
-
-  return { items: items.slice(start, start + limit), total };
+  return { items: items.rows, total: counted.rows[0].total };
 }
 
 export async function getById(id) {
-  const user = users.get(id);
-  if (!user) throw ApiError.notFound(`User ${id} not found`);
-  return user;
+  const { rows } = await query(`SELECT ${COLUMNS} FROM users WHERE id = $1`, [id]);
+
+  if (!rows.length) {
+    throw ApiError.notFound(`User ${id} not found`, { userMessage: 'Không tìm thấy user' });
+  }
+  return rows[0];
 }
 
 export async function create({ name, email }) {
-  const exists = [...users.values()].some((u) => u.email === email);
-  if (exists) throw ApiError.conflict(`Email ${email} is already taken`);
-
-  const now = new Date().toISOString();
-  const user = { id: randomUUID(), name, email, createdAt: now, updatedAt: now };
-  users.set(user.id, user);
-  return user;
+  try {
+    const { rows } = await query(
+      `INSERT INTO users (name, email) VALUES ($1, $2) RETURNING ${COLUMNS}`,
+      [name, email]
+    );
+    return rows[0];
+  } catch (err) {
+    // Let the constraint decide, rather than checking first: a SELECT-then-
+    // INSERT lets two concurrent signups with the same email both get through.
+    if (err.code === UNIQUE_VIOLATION) {
+      throw ApiError.conflict(`Email ${email} is already taken`, {
+        userMessage: 'Email này đã được sử dụng',
+        cause: err,
+      });
+    }
+    throw err;
+  }
 }
 
 export async function update(id, patch) {
-  const user = await getById(id);
+  try {
+    // COALESCE keeps this one static statement for any subset of fields.
+    // Neither column is nullable, so there is no "set it to NULL" case to lose.
+    const { rows } = await query(
+      `UPDATE users
+          SET name = COALESCE($2, name),
+              email = COALESCE($3, email),
+              updated_at = now()
+        WHERE id = $1
+      RETURNING ${COLUMNS}`,
+      [id, patch.name ?? null, patch.email ?? null]
+    );
 
-  if (patch.email && patch.email !== user.email) {
-    const taken = [...users.values()].some((u) => u.id !== id && u.email === patch.email);
-    if (taken) throw ApiError.conflict(`Email ${patch.email} is already taken`);
+    if (!rows.length) {
+      throw ApiError.notFound(`User ${id} not found`, { userMessage: 'Không tìm thấy user' });
+    }
+    return rows[0];
+  } catch (err) {
+    if (err.code === UNIQUE_VIOLATION) {
+      throw ApiError.conflict(`Email ${patch.email} is already taken`, {
+        userMessage: 'Email này đã được sử dụng',
+        cause: err,
+      });
+    }
+    throw err;
   }
-
-  const updated = { ...user, ...patch, updatedAt: new Date().toISOString() };
-  users.set(id, updated);
-  return updated;
 }
 
 export async function remove(id) {
-  await getById(id);
-  users.delete(id);
+  const { rowCount } = await query('DELETE FROM users WHERE id = $1', [id]);
+
+  if (!rowCount) {
+    throw ApiError.notFound(`User ${id} not found`, { userMessage: 'Không tìm thấy user' });
+  }
 }

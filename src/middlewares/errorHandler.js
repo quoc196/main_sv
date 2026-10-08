@@ -2,6 +2,7 @@ import { ZodError } from 'zod';
 import config from '../config/index.js';
 import logger from '../config/logger.js';
 import ApiError from '../utils/ApiError.js';
+import { failure } from '../utils/response.js';
 
 function normalize(err) {
   if (err instanceof ApiError) return err;
@@ -38,17 +39,27 @@ export default function errorHandler(err, req, res, _next) {
   if (error.statusCode >= 500) log.error(payload, error.message);
   else log.warn(payload, error.message);
 
-  // Internal failures must never leak their message outside development.
-  const exposeMessage = error.statusCode < 500 || config.isDevelopment;
+  // The status line is already on the wire (a stream broke mid-response, or
+  // something answered twice), so there is no way to turn this into a JSON
+  // error. Cut the socket: a truncated body tells the client it went wrong,
+  // while res.json() here would only throw ERR_HTTP_HEADERS_SENT.
+  if (res.headersSent) {
+    res.destroy(error);
+    return;
+  }
 
-  res.status(error.statusCode).json({
-    success: false,
-    error: {
-      code: error.code,
-      message: exposeMessage ? error.message : 'Internal server error',
-      ...(error.details ? { details: error.details } : {}),
-      ...(config.isDevelopment && error.stack ? { stack: error.stack.split('\n') } : {}),
-    },
-    requestId: req.id,
-  });
+  // Anything not explicitly marked user-facing falls back to the neutral copy
+  // in CODES: a message written for a developer must never reach an end user,
+  // whose frontend is about to display it verbatim. Development is the one
+  // exception — the real message beats the polished one while debugging.
+  const message = error.userMessage ?? (config.isDevelopment ? error.message : undefined);
+
+  res.status(error.statusCode).json(
+    failure(error.code, {
+      message,
+      details: error.details,
+      requestId: req.id,
+      stack: config.isDevelopment && error.stack ? error.stack.split('\n') : undefined,
+    })
+  );
 }
