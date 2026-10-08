@@ -10,6 +10,8 @@ Node.js >= 20.11 (đang chạy trên v22).
 
 ```bash
 npm install
+npm run db:up          # Postgres 17 local qua Docker (main_sv_dev + main_sv_test)
+npm run db:migrate     # apply migration lên main_sv_dev
 
 npm run dev            # development, tự reload (node --watch)
 npm run start:staging  # staging
@@ -17,7 +19,7 @@ npm run start:prod     # production
 npm test               # chạy test với NODE_ENV=test
 npm run lint           # eslint
 npm run env:check      # in ra config đã resolve cho môi trường hiện tại
-npm run db:migrate     # apply migration
+npm run db:down        # tắt Postgres local (dữ liệu vẫn giữ trong volume)
 ```
 
 Kiểm tra nhanh:
@@ -163,12 +165,16 @@ dòng ở đó, không tự viết code rời ở call site:
 | `06`   | `CONFLICT`                         | 409       | `POPUP`         |
 | `07`   | `UNPROCESSABLE_ENTITY`             | 422       | `POPUP`         |
 | `08`   | `TOO_MANY_REQUESTS`                | 429       | `TOAST`         |
+| `09`   | `PAYLOAD_TOO_LARGE`                | 413       | `TOAST`         |
+| `10`   | `SERVICE_UNAVAILABLE`              | 503       | `POPUP`         |
 | `99`   | `INTERNAL_SERVER_ERROR` / fallback | 500       | `POPUP`         |
 
 `err_show_type` cho frontend biết hiển thị `message` ở mức nào — `SILENT` / `TOAST` / `POPUP` /
 `REDIRECT` — để quyết định đó nằm ở API, không phải đoán lại ở từng screen.
 
-Key nào không có trong bảng sẽ rơi về `99`, nên tên nội bộ không bao giờ lọt ra wire.
+Key nào không có trong bảng sẽ rơi về `99`, nên tên nội bộ không bao giờ lọt ra wire. Riêng HTTP 4xx
+chưa có dòng riêng (415, 405, ...) rơi về `01` `BAD_REQUEST` — lỗi do phía gọi, không được hiện
+"hệ thống đang gặp sự cố".
 
 ### Gọi trong controller
 
@@ -236,8 +242,8 @@ npm run db:rollback           # lùi 1 migration
 npm run db:new "add orders"   # sinh file migration mới trong migrations/
 ```
 
-Không set `DATABASE_URL` thì `db:migrate` là no-op và app vẫn boot (chỉ `/health*` hoạt động) — nhưng
-`NODE_ENV=production` thì **bắt buộc** có, thiếu là `exit(1)`.
+Không set `DATABASE_URL` thì `db:migrate` là no-op và app vẫn boot: `/health*` hoạt động, mọi route
+cần DB trả `503` (code `10`) — nhưng `NODE_ENV=production` thì **bắt buộc** có, thiếu là `exit(1)`.
 
 ### Pooled vs. direct URL
 
@@ -288,13 +294,15 @@ không mất độ chính xác — đừng `Number()` nó rồi đem đi tính.
 
 ### Chạy test có DB
 
-`tests/users.test.js` chạy SQL thật nên tự `describe.skip` khi không có `DATABASE_URL`. CI luôn dựng
-một Postgres service nên suite này không bao giờ bị skip ở chỗ quan trọng. Local:
+Các suite chạy SQL thật (`users`, `transaction`) tự `describe.skip` khi không có `DATABASE_URL`. CI
+luôn dựng một Postgres service nên chúng không bao giờ bị skip ở chỗ quan trọng. Local, sau
+`npm run db:up`, tạo `.env.test.local` (đã gitignore):
 
 ```bash
-# .env.test
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/main_sv_test
 ```
+
+rồi `NODE_ENV=test npm run db:migrate && npm test`.
 
 Suite có `TRUNCATE users` nên trỏ vào database dùng một lần, đừng trỏ vào DB dev đang có dữ liệu.
 

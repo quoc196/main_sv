@@ -2,6 +2,7 @@ import pg from 'pg';
 
 import config from '../config/index.js';
 import logger from '../config/logger.js';
+import ApiError from '../utils/ApiError.js';
 
 /**
  * A single pool for the process. Nothing outside this module touches `pg`, so
@@ -14,6 +15,11 @@ import logger from '../config/logger.js';
 let pool = null;
 
 export function getPool() {
+  // Started on purpose without a database: a request that needs one is a 503
+  // the caller can understand, not a 500 that reads like a crash.
+  if (!isEnabled()) {
+    throw new ApiError(503, 'DATABASE_URL is not set', { code: 'SERVICE_UNAVAILABLE' });
+  }
   if (!pool) throw new Error('Database pool is not initialised — call connect() first');
   return pool;
 }
@@ -24,7 +30,9 @@ export function isEnabled() {
 
 export async function connect() {
   if (!isEnabled()) {
-    logger.warn('DATABASE_URL is not set — running with the in-memory store');
+    logger.warn(
+      'DATABASE_URL is not set — only /health* will work, every DB-backed route answers 503'
+    );
     return null;
   }
   if (pool) return pool;
@@ -66,16 +74,34 @@ export function query(text, params) {
  */
 export async function transaction(fn) {
   const client = await getPool().connect();
+  // A checked-out client is outside the pool's own 'error' listener, so a
+  // dropped connection (server restart, pooler kill) would surface as an
+  // uncaughtException and take the process down. The failing query already
+  // rejects with the same error; this only stops the duplicate from escaping.
+  const onClientError = (err) => logger.warn({ err }, 'Database client errored mid-transaction');
+  client.on('error', onClientError);
+  let broken;
   try {
     await client.query('BEGIN');
     const result = await fn(client);
     await client.query('COMMIT');
     return result;
   } catch (err) {
-    await client.query('ROLLBACK');
+    // If ROLLBACK itself fails the connection is dead or mid-transaction. The
+    // original error is still the one worth reporting, and the client must be
+    // destroyed rather than handed to the next request in that state.
+    try {
+      await client.query('ROLLBACK');
+    } catch (rollbackErr) {
+      broken = rollbackErr;
+      logger.error({ err: rollbackErr }, 'ROLLBACK failed, discarding the client');
+    }
     throw err;
   } finally {
-    client.release();
+    // A broken client can still emit after release, so it keeps the listener;
+    // a healthy one goes back to the pool clean.
+    if (!broken) client.off('error', onClientError);
+    client.release(broken);
   }
 }
 

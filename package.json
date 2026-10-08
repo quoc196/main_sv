@@ -20,7 +20,9 @@
     "env:check": "node -e \"import('./src/config/index.js').then(m=>console.log(JSON.stringify(m.default,null,2)))\"",
     "db:migrate": "node scripts/migrate.js up",
     "db:rollback": "node scripts/migrate.js down",
-    "db:new": "node-pg-migrate create -j js"
+    "db:new": "node-pg-migrate create -j js",
+    "db:up": "docker compose up -d --wait postgres",
+    "db:down": "docker compose down"
   },
   "dependencies": {
     "compression": "^1.7.5",

@@ -33,7 +33,7 @@ const schema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
 
-  // The app runs without a database (in-memory fallback) when this is unset.
+  // Unset: the app still boots and /health* works, but DB-backed routes answer 503.
   DATABASE_URL: z.string().optional(),
   /**
    * Migrations, pg_dump and anything needing session state must bypass the
@@ -137,8 +137,8 @@ if (config.isProduction && !config.jwt.secret) {
   process.exit(1);
 }
 
-// The in-memory fallback loses every write on restart and is not shared between
-// instances, so it is a local convenience only.
+// Booting without a database is a local convenience; production would come up
+// "healthy" and then 503 every real request.
 if (config.isProduction && !config.db.url) {
   console.error('[config] DATABASE_URL is required when NODE_ENV=production.');
   process.exit(1);

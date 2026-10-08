@@ -42,6 +42,12 @@ export const CODES = {
     message: 'Bạn thao tác quá nhanh, thử lại sau',
     showType: SHOW_TYPE.TOAST,
   },
+  PAYLOAD_TOO_LARGE: { code: '09', message: 'Dữ liệu gửi lên quá lớn', showType: SHOW_TYPE.TOAST },
+  SERVICE_UNAVAILABLE: {
+    code: '10',
+    message: 'Hệ thống tạm thời không phục vụ được, thử lại sau',
+    showType: SHOW_TYPE.POPUP,
+  },
 
   INTERNAL_SERVER_ERROR: {
     code: '99',
