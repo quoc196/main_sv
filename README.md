@@ -336,7 +336,8 @@ Pooler ở transaction mode (Neon, Supabase, RDS Proxy) không giữ được ad
 `DATABASE_URL`.
 
 `DB_POOL_MAX` mặc định `5`: pooler phía trên mới là chỗ fan out, còn mỗi instance giữ nhiều connection
-idle là cách nhanh nhất để hết quota free tier.
+idle là cách nhanh nhất để hết quota free tier. `DB_IDLE_TIMEOUT_MS` / `DB_CONNECT_TIMEOUT_MS` (mặc
+định `10000`) chỉnh thời gian giữ connection rảnh và thời gian chờ kết nối.
 
 ### Migration chạy lúc nào
 
