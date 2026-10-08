@@ -22,7 +22,8 @@
     "db:rollback": "node scripts/migrate.js down",
     "db:new": "node-pg-migrate create -j js",
     "db:up": "docker compose up -d --wait postgres",
-    "db:down": "docker compose down"
+    "db:down": "docker compose down",
+    "user:promote": "node scripts/promote-admin.js"
   },
   "dependencies": {
     "compression": "^1.7.5",
@@ -31,6 +32,7 @@
     "express": "^5.0.1",
     "express-rate-limit": "^7.5.0",
     "helmet": "^8.0.0",
+    "jose": "^6.2.12",
     "pg": "^8.23.0",
     "pino": "^9.6.0",
     "pino-http": "^10.4.0",

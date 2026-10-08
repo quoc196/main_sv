@@ -61,7 +61,9 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
-        value: 1d
+        value: 15m
+      - key: REFRESH_TOKEN_TTL_DAYS
+        value: "30"
 
   # -------------------------------------------------------------- production
   - type: web
@@ -116,4 +118,6 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
-        value: 1d
+        value: 15m
+      - key: REFRESH_TOKEN_TTL_DAYS
+        value: "30"

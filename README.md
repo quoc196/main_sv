@@ -45,17 +45,17 @@ Nhờ vậy production trên server chỉ cần inject secret qua env thật, kh
 
 ### Khác biệt giữa 3 môi trường
 
-|                                | development             | staging                 | production                                 |
-| ------------------------------ | ----------------------- | ----------------------- | ------------------------------------------ |
-| Log                            | `debug`, pretty màu     | `debug`, JSON           | `info`, JSON                               |
-| Stack trace trong response lỗi | có                      | không                   | không                                      |
-| Message lỗi 5xx                | hiện thật               | ẩn                      | ẩn                                         |
-| Rate limit                     | 1000 req/phút           | 300                     | 100                                        |
-| CORS                           | `*` (không credentials) | `*` hoặc domain staging | **bắt buộc** domain cụ thể, `*` là exit(1) |
-| `trust proxy`                  | tắt                     | bật (1 hop)             | bật (1 hop)                                |
-| `JWT_SECRET`                   | có sẵn giá trị dev      | tự điền                 | **bắt buộc**, thiếu là exit(1)             |
-| `DATABASE_URL`                 | tự điền                 | inject từ deploy target | **bắt buộc**, thiếu là exit(1)             |
-| Grace shutdown                 | 5s                      | 10s                     | 15s                                        |
+|                                | development             | staging                    | production                                 |
+| ------------------------------ | ----------------------- | -------------------------- | ------------------------------------------ |
+| Log                            | `debug`, pretty màu     | `debug`, JSON              | `info`, JSON                               |
+| Stack trace trong response lỗi | có                      | không                      | không                                      |
+| Message lỗi 5xx                | hiện thật               | ẩn                         | ẩn                                         |
+| Rate limit                     | 1000 req/phút           | 300                        | 100                                        |
+| CORS                           | `*` (không credentials) | `*` hoặc domain staging    | **bắt buộc** domain cụ thể, `*` là exit(1) |
+| `trust proxy`                  | tắt                     | bật (1 hop)                | bật (1 hop)                                |
+| `JWT_SECRET`                   | có sẵn giá trị dev      | **bắt buộc** (Render sinh) | **bắt buộc**, thiếu là exit(1)             |
+| `DATABASE_URL`                 | tự điền                 | inject từ deploy target    | **bắt buộc**, thiếu là exit(1)             |
+| Grace shutdown                 | 5s                      | 10s                        | 15s                                        |
 
 ### Validate config
 
@@ -167,6 +167,8 @@ dòng ở đó, không tự viết code rời ở call site:
 | `08`   | `TOO_MANY_REQUESTS`                | 429       | `TOAST`         |
 | `09`   | `PAYLOAD_TOO_LARGE`                | 413       | `TOAST`         |
 | `10`   | `SERVICE_UNAVAILABLE`              | 503       | `POPUP`         |
+| `11`   | `INVALID_CREDENTIALS`              | 401       | `TOAST`         |
+| `12`   | `TOKEN_EXPIRED`                    | 401       | `SILENT`        |
 | `99`   | `INTERNAL_SERVER_ERROR` / fallback | 500       | `POPUP`         |
 
 `err_show_type` cho frontend biết hiển thị `message` ở mức nào — `SILENT` / `TOAST` / `POPUP` /
@@ -214,6 +216,83 @@ format nghiệp vụ.
 Mọi response đều có header `x-request-id` trùng với `requestId` trong log — dùng để trace.
 Header `x-request-id` từ client chỉ được tái dùng nếu khớp `^[A-Za-z0-9_-]{1,64}$` (để nối trace qua
 proxy); giá trị khác sẽ bị thay bằng UUID mới, tránh client tự bơm rác vào log.
+
+## Xác thực & phân quyền
+
+Access token (JWT, mặc định 15 phút) gửi qua header, refresh token (chuỗi ngẫu nhiên, mặc định 30
+ngày) dùng để lấy access token mới. Không dùng cookie.
+
+| Endpoint                     | Cần token | Body                        | Ghi chú                                      |
+| ---------------------------- | --------- | --------------------------- | -------------------------------------------- |
+| `POST /api/v1/auth/register` | —         | `{ name, email, password }` | luôn tạo role `user`; trả session            |
+| `POST /api/v1/auth/login`    | —         | `{ email, password }`       | trả session                                  |
+| `POST /api/v1/auth/refresh`  | —         | `{ refreshToken }`          | trả session mới, token cũ hết hiệu lực       |
+| `POST /api/v1/auth/logout`   | —         | `{ refreshToken }`          | `204`; chạy được cả khi access token hết hạn |
+| `GET /api/v1/auth/me`        | có        | —                           | user hiện tại                                |
+| `/api/v1/users/*`            | admin     |                             | quản lý user, gồm đổi `role` / `password`    |
+
+Session trả về:
+
+```json
+{
+  "user": { "id": "...", "name": "...", "email": "...", "role": "user" },
+  "tokenType": "Bearer",
+  "accessToken": "eyJ...",
+  "expiresIn": 900,
+  "refreshToken": "..."
+}
+```
+
+Gọi API: `Authorization: Bearer <accessToken>`.
+
+### Frontend xử lý 401 thế nào
+
+| `code` | Nghĩa                                     | Frontend làm gì                                      |
+| ------ | ----------------------------------------- | ---------------------------------------------------- |
+| `12`   | access token hết hạn                      | gọi `/auth/refresh` **im lặng**, rồi gọi lại request |
+| `11`   | sai email/mật khẩu                        | hiện lỗi trên form đăng nhập                         |
+| `03`   | không có token / token giả / refresh hỏng | xoá token, về màn đăng nhập                          |
+
+**Refresh phải chạy tuần tự.** Mỗi refresh token chỉ dùng được một lần (rotation). Nếu cùng một
+token bị gửi hai lần — ví dụ hai tab cùng refresh — server coi là token bị đánh cắp và **thu hồi cả
+phiên đăng nhập đó**. Frontend cần một lock/promise dùng chung cho lần refresh đang chạy.
+
+### Những điều cần biết
+
+- Mật khẩu hash bằng `scrypt` (có sẵn trong Node, không cần build native). Tối thiểu 8, tối đa 128 ký tự.
+- DB chỉ lưu SHA-256 của refresh token. Mỗi lần đăng nhập là một "family"; logout thu hồi family đó,
+  không ảnh hưởng thiết bị khác.
+- Admin đổi mật khẩu một user thì **mọi phiên** của user đó bị thu hồi.
+- `requireAuth` không đọc DB, nên đổi role hoặc xoá user chỉ có hiệu lực khi access token hiện tại
+  hết hạn (tối đa `JWT_EXPIRES_IN`). Role mới được lấy ở lần refresh kế tiếp.
+- `login` / `register` có rate limit riêng: `AUTH_RATE_LIMIT_MAX` lần mỗi `RATE_LIMIT_WINDOW_MS` mỗi IP.
+- Token có `iss` = `APP_NAME`, nên token staging không dùng được ở production.
+
+### Admin đầu tiên
+
+API không cho tự nâng quyền, nên admin đầu tiên được cấp từ shell có quyền vào DB:
+
+```bash
+npm run user:promote -- you@example.com
+```
+
+Staging/production trên Render gói free không có Shell, nên chạy từ máy local và trỏ thẳng vào DB của
+môi trường đó (dùng connection string **external** lấy từ dashboard của provider DB):
+
+```bash
+DATABASE_URL='postgresql://...' npm run user:promote -- you@example.com
+```
+
+### Bảo vệ route mới
+
+```js
+import { requireAuth, requireRole } from '../../middlewares/auth.js';
+
+router.use(requireAuth);                        // mọi route bên dưới cần đăng nhập
+router.delete('/:id', requireRole('admin'), …); // riêng route này cần admin
+```
+
+Trong controller, người gọi là `req.user` = `{ id, role }`.
 
 ## Thêm một module mới
 

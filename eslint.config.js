@@ -15,6 +15,8 @@ export default [
         clearTimeout: 'readonly',
         URL: 'readonly',
         fetch: 'readonly',
+        Buffer: 'readonly',
+        TextEncoder: 'readonly',
       },
     },
     rules: {

@@ -12,7 +12,9 @@ describe('without a database', () => {
     const script = `
       import request from 'supertest';
       const { default: app } = await import('./src/app.js');
-      const res = await request(app).get('/api/v1/users');
+      const res = await request(app)
+        .post('/api/v1/auth/login')
+        .send({ email: 'a@example.com', password: 'whatever' });
       console.log(JSON.stringify({ status: res.status, body: res.body }));
     `;
     const out = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
