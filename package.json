@@ -5,7 +5,7 @@
   "type": "module",
   "main": "src/server.js",
   "engines": {
-    "node": ">=20.11.0"
+    "node": ">=22.0.0"
   },
   "scripts": {
     "dev": "cross-env NODE_ENV=development node --watch src/server.js",
@@ -13,7 +13,7 @@
     "start:staging": "cross-env NODE_ENV=staging node src/server.js",
     "start:prod": "cross-env NODE_ENV=production node src/server.js",
     "start": "node src/server.js",
-    "test": "cross-env NODE_ENV=test node --test --test-concurrency=1 tests/**/*.test.js",
+    "test": "cross-env NODE_ENV=test node --test --test-concurrency=1 \"tests/**/*.test.js\"",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write \"**/*.{js,json,md}\"",
