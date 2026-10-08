@@ -292,6 +292,26 @@ router.delete('/:id', requireRole('admin'), …); // riêng route này cần adm
 
 Trong controller, người gọi là `req.user` = `{ id, role }`.
 
+## Màn Home
+
+`GET /api/v1/home/actions` (cần đăng nhập) trả các action nhanh của màn Home:
+
+```json
+{
+  "code": "00",
+  "message": "Thành công",
+  "data": [
+    { "icon": "user", "title": "Tài khoản", "router": "/profile" },
+    { "icon": "bell", "title": "Thông báo", "router": "/notifications" },
+    { "icon": "history", "title": "Lịch sử", "router": "/history" },
+    { "icon": "settings", "title": "Cài đặt", "router": "/settings" }
+  ]
+}
+```
+
+`icon` là tên icon để app tự map sang bộ icon của mình, `router` là route của app khi bấm vào. Danh
+sách nằm cố định trong `src/modules/home/home.service.js` — sửa ở đó.
+
 ## Thêm một module mới
 
 Copy `src/modules/users/` rồi đổi tên, sau đó đăng ký trong `src/routes/index.js`:
