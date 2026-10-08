@@ -1,19 +1,17 @@
 import compression from 'compression';
 import cors from 'cors';
 import express from 'express';
-import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 
 import config from './config/index.js';
 import errorHandler from './middlewares/errorHandler.js';
 import httpLogger from './middlewares/httpLogger.js';
 import notFound from './middlewares/notFound.js';
+import rateLimiter from './middlewares/rateLimiter.js';
 import requestId from './middlewares/requestId.js';
 import response from './middlewares/response.js';
 import healthRoutes from './routes/health.route.js';
 import apiRoutes from './routes/index.js';
-import ApiError from './utils/ApiError.js';
-import { CODES } from './utils/response.js';
 
 const app = express();
 
@@ -41,20 +39,7 @@ app.use(express.urlencoded({ extended: true }));
 // keep working regardless of versioning.
 app.use('/health', healthRoutes);
 
-app.use(
-  config.app.apiPrefix,
-  rateLimit({
-    windowMs: config.rateLimit.windowMs,
-    max: config.rateLimit.max,
-    standardHeaders: 'draft-7',
-    legacyHeaders: false,
-    skip: () => config.isTest,
-    // Routed through the error handler so a throttled caller gets the same
-    // envelope as every other failure, not express-rate-limit's own body.
-    handler: (_req, _res, next) => next(new ApiError(429, CODES.TOO_MANY_REQUESTS.message)),
-  }),
-  apiRoutes
-);
+app.use(config.app.apiPrefix, rateLimiter(config.rateLimit.max), apiRoutes);
 
 app.use(notFound);
 app.use(errorHandler);

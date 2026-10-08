@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { requireAuth, requireRole } from '../../middlewares/auth.js';
 import validate from '../../middlewares/validate.js';
 import * as controller from './user.controller.js';
 import {
@@ -9,6 +10,10 @@ import {
 } from './user.validation.js';
 
 const router = Router();
+
+// Managing other accounts is an admin job. A user reads and edits their own
+// profile through /auth/me instead.
+router.use(requireAuth, requireRole('admin'));
 
 router
   .route('/')

@@ -1,5 +1,6 @@
-import { query } from '../../db/index.js';
+import { query, transaction } from '../../db/index.js';
 import ApiError from '../../utils/ApiError.js';
+import { hashPassword } from '../../utils/password.js';
 
 /**
  * The repository for `users`. Controllers depend on these signatures, not on
@@ -10,7 +11,10 @@ import ApiError from '../../utils/ApiError.js';
 const UNIQUE_VIOLATION = '23505';
 
 // snake_case in the database, camelCase on the wire — aliased once, here.
-const COLUMNS = 'id, name, email, created_at AS "createdAt", updated_at AS "updatedAt"';
+// password_hash is deliberately absent: nothing selected through COLUMNS can
+// leak it into a response.
+export const COLUMNS =
+  'id, name, email, role, created_at AS "createdAt", updated_at AS "updatedAt"';
 
 /**
  * `%` and `_` are ILIKE wildcards, so a search for "a_b" would otherwise match
@@ -54,11 +58,23 @@ export async function getById(id) {
   return rows[0];
 }
 
-export async function create({ name, email }) {
+/** For login only: the one read that returns the hash, kept out of COLUMNS. */
+export async function findCredentialsByEmail(email) {
+  const { rows } = await query(
+    `SELECT ${COLUMNS}, password_hash AS "passwordHash" FROM users WHERE email = $1`,
+    [email]
+  );
+  return rows[0] ?? null;
+}
+
+export async function create({ name, email, password, role = 'user' }) {
+  const passwordHash = password ? await hashPassword(password) : null;
   try {
     const { rows } = await query(
-      `INSERT INTO users (name, email) VALUES ($1, $2) RETURNING ${COLUMNS}`,
-      [name, email]
+      `INSERT INTO users (name, email, password_hash, role)
+       VALUES ($1, $2, $3, $4)
+       RETURNING ${COLUMNS}`,
+      [name, email, passwordHash, role]
     );
     return rows[0];
   } catch (err) {
@@ -75,18 +91,32 @@ export async function create({ name, email }) {
 }
 
 export async function update(id, patch) {
+  const passwordHash = patch.password ? await hashPassword(patch.password) : null;
   try {
-    // COALESCE keeps this one static statement for any subset of fields.
-    // Neither column is nullable, so there is no "set it to NULL" case to lose.
-    const { rows } = await query(
-      `UPDATE users
-          SET name = COALESCE($2, name),
-              email = COALESCE($3, email),
-              updated_at = now()
-        WHERE id = $1
-      RETURNING ${COLUMNS}`,
-      [id, patch.name ?? null, patch.email ?? null]
-    );
+    // COALESCE keeps this one static statement for any subset of fields. None
+    // of them can be cleared to NULL through the API, so nothing is lost.
+    // A new password also ends every session the user has: whoever knew the
+    // old one must not keep a refresh token that outlives the change.
+    const { rows } = await transaction(async (client) => {
+      const result = await client.query(
+        `UPDATE users
+            SET name = COALESCE($2, name),
+                email = COALESCE($3, email),
+                password_hash = COALESCE($4, password_hash),
+                role = COALESCE($5, role),
+                updated_at = now()
+          WHERE id = $1
+        RETURNING ${COLUMNS}`,
+        [id, patch.name ?? null, patch.email ?? null, passwordHash, patch.role ?? null]
+      );
+      if (result.rows.length && passwordHash) {
+        await client.query(
+          'UPDATE refresh_tokens SET revoked_at = now() WHERE user_id = $1 AND revoked_at IS NULL',
+          [id]
+        );
+      }
+      return result;
+    });
 
     if (!rows.length) {
       throw ApiError.notFound(`User ${id} not found`, { userMessage: 'Không tìm thấy user' });

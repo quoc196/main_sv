@@ -48,6 +48,15 @@ export const CODES = {
     message: 'Hệ thống tạm thời không phục vụ được, thử lại sau',
     showType: SHOW_TYPE.POPUP,
   },
+  // 401s the frontend must tell apart: wrong password is shown on the login
+  // form, an expired access token is refreshed silently, and only UNAUTHORIZED
+  // (no token, bad token, refresh failed) sends the user back to login.
+  INVALID_CREDENTIALS: {
+    code: '11',
+    message: 'Email hoặc mật khẩu không đúng',
+    showType: SHOW_TYPE.TOAST,
+  },
+  TOKEN_EXPIRED: { code: '12', message: 'Phiên đăng nhập đã hết hạn', showType: SHOW_TYPE.SILENT },
 
   INTERNAL_SERVER_ERROR: {
     code: '99',
