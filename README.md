@@ -294,7 +294,7 @@ Trong controller, người gọi là `req.user` = `{ id, role }`.
 
 ## Màn Home
 
-`GET /api/v1/home/actions` (cần đăng nhập) trả các action nhanh của màn Home:
+`GET /api/v1/home/actions` (không cần token) trả các action nhanh của màn Home:
 
 ```json
 {
