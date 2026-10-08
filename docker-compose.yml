@@ -1,4 +1,4 @@
-# Local Postgres for development and tests — not used by any deploy.
+# Local Postgres for development — not used by any deploy.
 # Matches the credentials in .env.development and the CI service.
 #
 #   npm run db:up      # start and wait until it accepts connections
@@ -15,8 +15,6 @@ services:
       - '5432:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # Runs once, on an empty volume: creates the throwaway test database.
-      - ./docker/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U postgres']
       interval: 2s
