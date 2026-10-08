@@ -301,9 +301,26 @@ Suite có `TRUNCATE users` nên trỏ vào database dùng một lần, đừng t
 ## CI
 
 `.github/workflows/ci.yml` chạy trên mọi push và PR vào `staging` / `main`: lint, kiểm tra
-format, migration lên một Postgres 17 service thật, test, kiểm tra migration `down` đảo lại được, `npm audit` (chỉ runtime deps), và thử boot config `production`. Render deploy trực tiếp từ 2
-branch này, nên bật **branch protection** yêu cầu job `check` pass — nếu không thì một commit làm đỏ
-test vẫn đi thẳng lên production.
+format, migration lên một Postgres 17 service thật, test, kiểm tra migration `down` đảo lại được,
+`npm audit` (chỉ runtime deps), và thử boot config `production`.
+
+## CD
+
+```
+push staging ──► CI (check) ──pass──► Render deploy main-sv-staging
+push main    ──► CI (check) ──pass──► Render deploy main-sv
+                              fail──► không deploy
+```
+
+Cả hai service trong `render.yaml` đặt `autoDeployTrigger: checksPass`: Render chỉ deploy commit
+khi mọi GitHub check trên commit đó pass. CI đỏ thì service giữ nguyên bản đang chạy.
+
+Nên bật thêm **branch protection** cho `main` (Settings → Branches): bắt buộc qua PR và yêu cầu job
+`check` pass trước khi merge — để lỗi bị chặn ở PR, không phải đợi tới lúc push lên `main`.
+
+Rollback: Render dashboard → service → **Events** → chọn deploy cũ → **Rollback**. Rollback chỉ
+đổi code, không đổi schema; chỉ chạy `npm run db:rollback` (với `DATABASE_URL_UNPOOLED` của môi
+trường đó) khi bản cũ không chạy được trên schema mới.
 
 ## Deploy
 
@@ -348,8 +365,8 @@ git checkout main && git merge staging && git push origin main   # -> main-sv
 process env thật nên giá trị của Render luôn thắng `PORT` trong `.env.*`.
 
 `CORS_ORIGINS` của production khai `sync: false` — Render hỏi giá trị lúc Apply và lưu trong
-dashboard, không commit wildcard vào repo. `buildCommand` dùng `npm ci --omit=dev` nên devDependencies
-không lên service đang chạy.
+dashboard, không commit wildcard vào repo. `buildCommand` kết thúc bằng `npm prune --omit=dev` nên
+devDependencies không lên service đang chạy.
 
 `JWT_SECRET` dùng `generateValue: true` — Render sinh riêng cho từng service, hai môi
 trường không dùng chung secret. `DATABASE_URL` và các secret khác điền trong dashboard

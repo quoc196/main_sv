@@ -16,6 +16,9 @@ services:
     plan: free
     region: singapore
     branch: staging
+    # Deploy only after GitHub checks (the CI job) pass on the commit, so a red
+    # build never reaches this service.
+    autoDeployTrigger: checksPass
     buildCommand: npm ci && npm run db:migrate && npm prune --omit=dev
     startCommand: npm start
     healthCheckPath: /health/live
@@ -67,6 +70,9 @@ services:
     plan: free
     region: singapore
     branch: main
+    # Deploy only after GitHub checks (the CI job) pass on the commit, so a red
+    # build never reaches this service.
+    autoDeployTrigger: checksPass
     buildCommand: npm ci && npm run db:migrate && npm prune --omit=dev
     startCommand: npm start
     healthCheckPath: /health/live
