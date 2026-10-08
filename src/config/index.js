@@ -54,7 +54,7 @@ const schema = z.object({
   REDIS_URL: z.string().optional(),
 
   // Signs access tokens. Every environment needs one now that auth exists;
-  // .env.development and .env.test carry throwaway values.
+  // .env.development carries a throwaway value.
   JWT_SECRET: z.string().min(16),
   // Short on purpose: an access token cannot be revoked, only outlived. The
   // refresh token is what keeps a session alive.

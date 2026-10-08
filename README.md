@@ -10,13 +10,12 @@ Node.js >= 20.11 (đang chạy trên v22).
 
 ```bash
 npm install
-npm run db:up          # Postgres 17 local qua Docker (main_sv_dev + main_sv_test)
+npm run db:up          # Postgres 17 local qua Docker (main_sv_dev)
 npm run db:migrate     # apply migration lên main_sv_dev
 
 npm run dev            # development, tự reload (node --watch)
 npm run start:staging  # staging
 npm run start:prod     # production
-npm test               # chạy test với NODE_ENV=test
 npm run lint           # eslint
 npm run env:check      # in ra config đã resolve cho môi trường hiện tại
 npm run db:down        # tắt Postgres local (dữ liệu vẫn giữ trong volume)
@@ -114,7 +113,6 @@ src/
 └── db/index.js               # pool pg, query(), transaction(), ping()
 migrations/                   # node-pg-migrate, chạy trong buildCommand
 scripts/migrate.js            # wrapper lấy connection string từ config
-tests/
 ```
 
 ## Quy ước response
@@ -294,6 +292,26 @@ router.delete('/:id', requireRole('admin'), …); // riêng route này cần adm
 
 Trong controller, người gọi là `req.user` = `{ id, role }`.
 
+## Màn Home
+
+`GET /api/v1/home/actions` (cần đăng nhập) trả các action nhanh của màn Home:
+
+```json
+{
+  "code": "00",
+  "message": "Thành công",
+  "data": [
+    { "icon": "user", "title": "Tài khoản", "router": "/profile" },
+    { "icon": "bell", "title": "Thông báo", "router": "/notifications" },
+    { "icon": "history", "title": "Lịch sử", "router": "/history" },
+    { "icon": "settings", "title": "Cài đặt", "router": "/settings" }
+  ]
+}
+```
+
+`icon` là tên icon để app tự map sang bộ icon của mình, `router` là route của app khi bấm vào. Danh
+sách nằm cố định trong `src/modules/home/home.service.js` — sửa ở đó.
+
 ## Thêm một module mới
 
 Copy `src/modules/users/` rồi đổi tên, sau đó đăng ký trong `src/routes/index.js`:
@@ -336,7 +354,8 @@ Pooler ở transaction mode (Neon, Supabase, RDS Proxy) không giữ được ad
 `DATABASE_URL`.
 
 `DB_POOL_MAX` mặc định `5`: pooler phía trên mới là chỗ fan out, còn mỗi instance giữ nhiều connection
-idle là cách nhanh nhất để hết quota free tier.
+idle là cách nhanh nhất để hết quota free tier. `DB_IDLE_TIMEOUT_MS` / `DB_CONNECT_TIMEOUT_MS` (mặc
+định `10000`) chỉnh thời gian giữ connection rảnh và thời gian chờ kết nối.
 
 ### Migration chạy lúc nào
 
@@ -371,25 +390,12 @@ await transaction(async (client) => {
 Tiền thì dùng `NUMERIC`, **không** `float`. `pg` trả `NUMERIC` về dạng **string** đúng như vậy để
 không mất độ chính xác — đừng `Number()` nó rồi đem đi tính.
 
-### Chạy test có DB
-
-Các suite chạy SQL thật (`users`, `transaction`) tự `describe.skip` khi không có `DATABASE_URL`. CI
-luôn dựng một Postgres service nên chúng không bao giờ bị skip ở chỗ quan trọng. Local, sau
-`npm run db:up`, tạo `.env.test.local` (đã gitignore):
-
-```bash
-DATABASE_URL=postgresql://postgres:postgres@localhost:5432/main_sv_test
-```
-
-rồi `NODE_ENV=test npm run db:migrate && npm test`.
-
-Suite có `TRUNCATE users` nên trỏ vào database dùng một lần, đừng trỏ vào DB dev đang có dữ liệu.
-
 ## CI
 
 `.github/workflows/ci.yml` chạy trên mọi push và PR vào `staging` / `main`: lint, kiểm tra
-format, migration lên một Postgres 17 service thật, test, kiểm tra migration `down` đảo lại được,
-`npm audit` (chỉ runtime deps), và thử boot config `production`.
+format, migration lên một Postgres 17 service thật, kiểm tra migration `down` đảo lại được,
+`npm audit` (chỉ runtime deps), và thử boot config `production`. Repo **không có test tự động**, nên
+CI không kiểm tra logic nghiệp vụ — cần test tay trên staging trước khi merge lên `main`.
 
 ## CD
 

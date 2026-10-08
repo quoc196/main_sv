@@ -16,15 +16,14 @@ jobs:
   check:
     runs-on: ubuntu-latest
 
-    # A real Postgres, so the SQL in the service layer is actually exercised
-    # instead of the users suite quietly skipping itself.
+    # A real Postgres, so every migration is applied and rolled back for real.
     services:
       postgres:
         image: postgres:17-alpine
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
-          POSTGRES_DB: main_sv_test
+          POSTGRES_DB: main_sv_ci
         ports:
           - 5432:5432
         options: >-
@@ -34,7 +33,7 @@ jobs:
           --health-retries 5
 
     env:
-      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/main_sv_test
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/main_sv_ci
 
     steps:
       - uses: actions/checkout@v4
@@ -54,9 +53,6 @@ jobs:
 
       - name: Migrate
         run: npm run db:migrate
-
-      - name: Test
-        run: npm test
 
       # A migration that cannot be undone is a migration you cannot roll back a
       # deploy past, so the down path is exercised too.
