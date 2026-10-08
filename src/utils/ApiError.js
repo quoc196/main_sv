@@ -56,8 +56,13 @@ function httpCode(statusCode) {
       404: 'NOT_FOUND',
       409: 'CONFLICT',
       422: 'UNPROCESSABLE_ENTITY',
+      413: 'PAYLOAD_TOO_LARGE',
       429: 'TOO_MANY_REQUESTS',
       500: 'INTERNAL_SERVER_ERROR',
-    }[statusCode] ?? 'ERROR'
+      503: 'SERVICE_UNAVAILABLE',
+    }[statusCode] ??
+    // An unlisted 4xx (415, 405, ...) is still the caller's mistake; falling
+    // through to ERROR would show them "the system is down".
+    (statusCode < 500 ? 'BAD_REQUEST' : 'ERROR')
   );
 }

@@ -126,3 +126,26 @@ describe('developer messages stay off the wire', () => {
     assert.ok(!JSON.stringify(res.body).includes('a@b.c'));
   });
 });
+
+describe('status codes without a row of their own', () => {
+  const build = (status) => {
+    const api = express();
+    api.get('/', (_req, _res, next) => next(Object.assign(new Error('x'), { status })));
+    api.use(errorHandler);
+    return api;
+  };
+
+  it('413 has its own code instead of "system error"', async () => {
+    const res = await request(build(413)).get('/');
+
+    assert.equal(res.status, 413);
+    assert.equal(res.body.code, CODES.PAYLOAD_TOO_LARGE.code);
+  });
+
+  it('an unlisted 4xx is a bad request, never the 99 fallback', async () => {
+    const res = await request(build(415)).get('/');
+
+    assert.equal(res.status, 415);
+    assert.equal(res.body.code, CODES.BAD_REQUEST.code);
+  });
+});
