@@ -9,9 +9,9 @@ export const shorthands = undefined;
  * @returns {Promise<void> | void}
  */
 export const up = (pgm) => {
-    pgm.addColumn('users', {
-        bio: { type: 'text', notNull: false, default: null },
-    });
+  pgm.addColumn('users', {
+    bio: { type: 'text', notNull: false, default: null },
+  });
 };
 
 /**
@@ -20,5 +20,5 @@ export const up = (pgm) => {
  * @returns {Promise<void> | void}
  */
 export const down = (pgm) => {
-    pgm.dropColumn('users', 'bio');
+  pgm.dropColumn('users', 'bio');
 };

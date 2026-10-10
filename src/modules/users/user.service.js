@@ -2,11 +2,10 @@ import { query, transaction } from '../../db/index.js';
 import ApiError from '../../utils/ApiError.js';
 import { hashPassword } from '../../utils/password.js';
 
-
 const UNIQUE_VIOLATION = '23505';
 
 export const COLUMNS =
-  'id, name, email, role, phone, avatar_url AS "avatarUrl", ' +
+  'id, name, email, role,bio, phone, avatar_url AS "avatarUrl", ' +
   'created_at AS "createdAt", updated_at AS "updatedAt"';
 
 const escapeLike = (value) => value.replace(/[\\%_]/g, '\\$&');
@@ -74,10 +73,6 @@ export async function create({ name, email, password, role = 'user' }) {
 export async function update(id, patch) {
   const passwordHash = patch.password ? await hashPassword(patch.password) : null;
   try {
-    // COALESCE keeps this one static statement for any subset of fields. None
-    // of them can be cleared to NULL through the API, so nothing is lost.
-    // A new password also ends every session the user has: whoever knew the
-    // old one must not keep a refresh token that outlives the change.
     const { rows } = await transaction(async (client) => {
       const result = await client.query(
         `UPDATE users
