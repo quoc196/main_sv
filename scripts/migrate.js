@@ -110,9 +110,13 @@ const { status, error } = spawnSync(
   }
 );
 
-// e.g. ENOENT when run as `node scripts/migrate.js` outside npm, where
-// node_modules/.bin is not on PATH. Say so instead of exiting 1 silently.
-if (error)
-  fail(`Could not start node-pg-migrate: ${error.message}`, 'run it as `npm run db:migrate`.');
+// ENOENT: the binary is missing (installed without it) or not on PATH (run as
+// `node scripts/migrate.js` outside npm). Say so instead of exiting 1 silently.
+if (error) {
+  fail(
+    `Could not start node-pg-migrate: ${error.message}`,
+    'run it as `npm run db:migrate` after a plain `npm ci` — node-pg-migrate is a dependency.'
+  );
+}
 
 process.exit(status ?? 1);
