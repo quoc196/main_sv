@@ -13,8 +13,9 @@ npm install
 npm run db:up          # Postgres 17 local qua Docker (main_sv_dev)
 npm run db:migrate     # apply migration lên main_sv_dev
 
-npm run dev            # development, tự reload (node --watch)
-npm run start:staging  # staging
+npm run dev            # development, tự reload khi sửa src/ hoặc .env (nodemon)
+npm run dev:staging    # như trên nhưng NODE_ENV=staging
+npm run start:staging  # staging, không tự reload
 npm run start:prod     # production
 npm run lint           # eslint
 npm run env:check      # in ra config đã resolve cho môi trường hiện tại
@@ -292,6 +293,128 @@ router.delete('/:id', requireRole('admin'), …); // riêng route này cần adm
 
 Trong controller, người gọi là `req.user` = `{ id, role }`.
 
+## Tin đăng phòng trọ
+
+### Danh mục (công khai, cache 1 giờ)
+
+| Endpoint                                    | Trả về                                       |
+| ------------------------------------------- | -------------------------------------------- |
+| `GET /api/v1/catalog/provinces`             | 34 tỉnh/thành (sau sáp nhập 1/7/2025)        |
+| `GET /api/v1/catalog/provinces/:code/wards` | phường/xã của tỉnh (`code` 2 chữ số)         |
+| `GET /api/v1/catalog/amenities`             | tiện ích: `air_con`, `private_wc`, `loft`, … |
+
+Danh mục được nạp bằng migration từ `migrations/data/vn-administrative-units-2025.json`. Không có cấp
+quận/huyện.
+
+### Tin đăng
+
+| Endpoint                                | Token | Ghi chú                                                                       |
+| --------------------------------------- | ----- | ----------------------------------------------------------------------------- |
+| `GET /listings`                         | —     | tìm kiếm, chỉ tin `active` còn hạn                                            |
+| `GET /listings/:id`                     | tuỳ   | tin đang hiện: ai cũng xem; tin khác: chỉ chủ tin và admin                    |
+| `POST /listings`                        | có    | tạo tin, trạng thái `pending`; cần đã có số điện thoại                        |
+| `PATCH /listings/:id`                   | chủ   | sửa bất kỳ trường nào → về `pending` chờ duyệt lại                            |
+| `DELETE /listings/:id`                  | chủ   | xoá tin và ảnh (admin cũng xoá được)                                          |
+| `PATCH /listings/:id/status`            | chủ   | `{ status }`: `active` ↔ `rented` ↔ `hidden`                                  |
+| `POST /listings/:id/refresh`            | chủ   | gia hạn thêm `LISTING_TTL_DAYS` ngày; tối đa 1 lần / 24 giờ                   |
+| `GET /listings/mine?status=`            | có    | tin của tôi, mọi trạng thái, kèm `rejectReason`                               |
+| `POST /listings/:id/images`             | chủ   | `multipart/form-data`, trường `images`; JPG/PNG/WEBP ≤ 5MB, tối đa 10 ảnh/tin |
+| `DELETE /listings/:id/images/:imageId`  | chủ   |                                                                               |
+| `PUT` / `DELETE /listings/:id/favorite` | có    | lưu / bỏ lưu                                                                  |
+| `GET /listings/favorites`               | có    | tin đã lưu (kể cả tin đã cho thuê, kèm `status`)                              |
+| `POST /listings/:id/reports`            | có    | `{ reason, note? }`; mỗi người báo cáo 1 tin 1 lần                            |
+| `PATCH /auth/me`                        | có    | `{ name?, phone?, avatarUrl? }`: cập nhật số điện thoại                       |
+
+Tất cả nằm dưới `/api/v1`. Body tạo tin:
+
+```json
+{
+  "type": "room",
+  "title": "Phòng trọ khép kín gần Bách Khoa",
+  "description": "…",
+  "price": 3500000,
+  "deposit": 3500000,
+  "areaM2": 25.5,
+  "maxOccupants": 2,
+  "wardCode": "00292",
+  "addressDetail": "Ngõ 12 Tạ Quang Bửu",
+  "lat": 21.0045,
+  "lng": 105.8433,
+  "electricityPrice": 3500,
+  "waterPrice": 100000,
+  "waterUnit": "person",
+  "wifiFee": 100000,
+  "parkingFee": 0,
+  "curfewTime": "23:00",
+  "sharedWithOwner": false,
+  "genderPreference": "any",
+  "petsAllowed": false,
+  "availableFrom": "2026-11-01",
+  "amenities": ["air_con", "private_wc"]
+}
+```
+
+- `type`: `room` / `mini_apartment` / `house` / `shared`. Tiền là VND, số nguyên.
+- Phí để `null` hoặc bỏ trống nghĩa là **đã gồm trong giá thuê**. `waterUnit`: `m3` / `person` / `included`.
+- `curfewTime: null` là giờ giấc tự do. Tỉnh được suy ra từ `wardCode`.
+- Mỗi tin trả về `estimatedMonthlyCost`: tiền phòng + điện 100 kWh + nước 4 m³ (hoặc 1 người) + wifi
+  - gửi xe, để giá rẻ mà phí cao không giấu được.
+
+Tham số tìm kiếm `GET /listings`:
+
+| Tham số                  | Ví dụ                  | Ghi chú                                                    |
+| ------------------------ | ---------------------- | ---------------------------------------------------------- |
+| `q`                      | `ta quang buu`         | khớp tiêu đề + địa chỉ, không phân biệt dấu / hoa thường   |
+| `province`, `ward`       | `01`, `00292`          |                                                            |
+| `type`                   | `room`                 |                                                            |
+| `minPrice`, `maxPrice`   | `2000000`              |                                                            |
+| `minArea`                | `20`                   |                                                            |
+| `amenities`              | `air_con,private_wc`   | phải có **đủ** các tiện ích                                |
+| `gender`                 | `female`               | hiện tin cho nữ và tin không giới hạn                      |
+| `pets`                   | `true`                 |                                                            |
+| `lat`, `lng`, `radiusKm` | `21.02`, `105.85`, `3` | tìm trong bán kính (mặc định 5 km); kết quả có `distanceM` |
+| `sort`                   | `newest`               | `newest` / `price_asc` / `price_desc` / `distance`         |
+| `page`, `limit`          | `1`, `20`              | `limit` tối đa 50                                          |
+
+### Vòng đời tin
+
+```
+pending ──duyệt──▶ active ──chủ──▶ rented / hidden ──chủ──▶ active
+   ▲                 │ └──admin──▶ rejected / hidden
+   └──── sửa nội dung hoặc thêm ảnh ────┘
+```
+
+- Mọi lần **sửa nội dung hoặc thêm ảnh** đều đưa tin về `pending`: duyệt là duyệt đúng nội dung đã
+  xem, tránh được duyệt bằng ảnh thật rồi đổi ảnh khác.
+- Tin hết hạn sau `LISTING_TTL_DAYS` ngày (mặc định 14) kể từ lúc duyệt hoặc làm mới, tự rớt khỏi
+  kết quả tìm kiếm, không cần cron. `sort=newest` xếp theo lần duyệt/làm mới gần nhất.
+- Đăng tin cần có số điện thoại (`PATCH /auth/me`): người thuê liên hệ chủ trọ qua số này.
+
+### Admin
+
+| Endpoint                             | Ghi chú                                                                       |
+| ------------------------------------ | ----------------------------------------------------------------------------- |
+| `GET /admin/listings?status=pending` | hàng chờ duyệt, cũ nhất trước, kèm thông tin chủ tin                          |
+| `PATCH /admin/listings/:id`          | `{ action: "approve" }`, `{ action: "reject", reason }`, `{ action: "hide" }` |
+| `GET /admin/reports?status=open`     | báo cáo đang mở                                                               |
+| `PATCH /admin/reports/:id`           | `{ status: "resolved" \| "dismissed", hideListing? }`                         |
+
+### Ảnh: Supabase Storage
+
+1. Supabase → **Storage → New bucket** tên `listings`, bật **Public bucket**.
+2. **Project Settings → API**: lấy `Project URL` và khoá `service_role`.
+3. Điền vào Environment của service trên Render: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+
+Khoá `service_role` **bỏ qua mọi quyền** trên Supabase, chỉ để trong dashboard Render, không bao giờ
+commit hay gửi cho client. Chưa cấu hình thì app vẫn chạy, chỉ API upload ảnh trả `503`. DB chỉ lưu
+đường dẫn trong bucket (`<listingId>/<uuid>.jpg`), URL công khai được ghép lúc trả về.
+
+### Tìm kiếm chạy bằng gì
+
+Không cần PostGIS: `cube` + `earthdistance` (tìm theo bán kính, index GiST) và `pg_trgm` +
+`unaccent` (tìm chữ không dấu, index GIN) đều đi kèm Postgres, có sẵn trên Supabase, CI và Docker
+local. Migration tự bật các extension này.
+
 ## Màn Home
 
 `GET /api/v1/home/actions` (không cần token) trả các action nhanh của màn Home:
@@ -344,14 +467,21 @@ cần DB trả `503` (code `10`) — nhưng `NODE_ENV=production` thì **bắt b
 
 ### Pooled vs. direct URL
 
-| Biến                    | Dùng cho    | Ghi chú                                                                  |
-| ----------------------- | ----------- | ------------------------------------------------------------------------ |
-| `DATABASE_URL`          | app runtime | dùng string **pooled** (hostname có `-pooler`) nếu provider có PgBouncer |
-| `DATABASE_URL_UNPOOLED` | migration   | string **direct**; bỏ trống thì fallback về `DATABASE_URL`               |
+DB staging và production chạy trên **Supabase**, mỗi môi trường **một project riêng** (gói free cho
+tối đa 2 project). Lấy chuỗi kết nối ở **Project → Connect**, điền vào Environment của service tương
+ứng trên Render:
 
-Pooler ở transaction mode (Neon, Supabase, RDS Proxy) không giữ được advisory lock và session state mà
-`node-pg-migrate` cần, nên migration phải đi đường direct. Postgres trần không có pooler thì chỉ cần
-`DATABASE_URL`.
+| Biến                    | Dùng cho    | Chuỗi Supabase                                                     |
+| ----------------------- | ----------- | ------------------------------------------------------------------ |
+| `DATABASE_URL`          | app runtime | **Transaction pooler** (cổng `6543`)                               |
+| `DATABASE_URL_UNPOOLED` | migration   | **Session pooler** (cổng `5432`); bỏ trống thì dùng `DATABASE_URL` |
+
+Pooler ở transaction mode không giữ được advisory lock mà `node-pg-migrate` cần, nên migration đi qua
+session pooler. **Không dùng "Direct connection"**: nó chỉ có IPv6, Render không gọi ra được.
+Postgres không có pooler phía trước (Docker local, CI) thì chỉ cần `DATABASE_URL`.
+
+Project free bị **tạm dừng sau 7 ngày không có hoạt động** — khi đó API trả `503` cho tới khi bật
+lại trong dashboard Supabase. Staging ít người dùng dễ dính nhất.
 
 `DB_POOL_MAX` mặc định `5`: pooler phía trên mới là chỗ fan out, còn mỗi instance giữ nhiều connection
 idle là cách nhanh nhất để hết quota free tier. `DB_IDLE_TIMEOUT_MS` / `DB_CONNECT_TIMEOUT_MS` (mặc

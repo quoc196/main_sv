@@ -4,3 +4,5 @@ dist/
 build/
 package-lock.json
 tempCodeRunnerFile.js
+# Generated seed data, kept on one line on purpose.
+migrations/data/

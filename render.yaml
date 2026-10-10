@@ -42,10 +42,11 @@ services:
       # frontend exists.
       - key: CORS_ORIGINS
         value: "*"
-      # Neon/Supabase: use the POOLED string here (hostname with -pooler) and
-      # the direct one for DATABASE_URL_UNPOOLED, which migrations need — a
-      # transaction-mode pooler cannot hold their advisory lock. Plain Postgres
-      # with no pooler in front: set DATABASE_URL only.
+      # Supabase (Project -> Connect), one project per environment:
+      #   DATABASE_URL          = Transaction pooler string (port 6543)
+      #   DATABASE_URL_UNPOOLED = Session pooler string (port 5432), for
+      #                           migrations, which need a session-held lock.
+      # Not "Direct connection": it is IPv6-only and Render cannot reach it.
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_URL_UNPOOLED
@@ -62,6 +63,16 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 15m
+      # Supabase Storage for listing photos: Project Settings -> API. The
+      # service_role key bypasses every storage policy; dashboard only.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: STORAGE_BUCKET
+        value: listings
+      - key: LISTING_TTL_DAYS
+        value: "14"
       - key: REFRESH_TOKEN_TTL_DAYS
         value: "30"
 
@@ -98,10 +109,11 @@ services:
       # with "*" when NODE_ENV=production, so this must not be committed here.
       - key: CORS_ORIGINS
         sync: false
-      # Neon/Supabase: use the POOLED string here (hostname with -pooler) and
-      # the direct one for DATABASE_URL_UNPOOLED, which migrations need — a
-      # transaction-mode pooler cannot hold their advisory lock. Plain Postgres
-      # with no pooler in front: set DATABASE_URL only.
+      # Supabase (Project -> Connect), one project per environment:
+      #   DATABASE_URL          = Transaction pooler string (port 6543)
+      #   DATABASE_URL_UNPOOLED = Session pooler string (port 5432), for
+      #                           migrations, which need a session-held lock.
+      # Not "Direct connection": it is IPv6-only and Render cannot reach it.
       - key: DATABASE_URL
         sync: false
       - key: DATABASE_URL_UNPOOLED
@@ -119,5 +131,15 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 15m
+      # Supabase Storage for listing photos: Project Settings -> API. The
+      # service_role key bypasses every storage policy; dashboard only.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: STORAGE_BUCKET
+        value: listings
+      - key: LISTING_TTL_DAYS
+        value: "14"
       - key: REFRESH_TOKEN_TTL_DAYS
         value: "30"

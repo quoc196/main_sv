@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { email, password } from '../users/user.validation.js';
+import { email, password, phone } from '../users/user.validation.js';
 
 export const registerSchema = {
   body: z.object({
@@ -21,4 +21,14 @@ export const loginSchema = {
 
 export const refreshTokenSchema = {
   body: z.object({ refreshToken: z.string().min(1).max(200) }),
+};
+
+export const updateProfileSchema = {
+  body: z
+    .object({
+      name: z.string().trim().min(1).max(120).optional(),
+      phone: phone.nullable().optional(),
+      avatarUrl: z.string().url().max(500).nullable().optional(),
+    })
+    .refine((v) => Object.keys(v).length > 0, { message: 'At least one field is required' }),
 };
