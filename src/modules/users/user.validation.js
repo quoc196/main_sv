@@ -1,25 +1,12 @@
 import { z } from 'zod';
 
-/**
- * Lower-cased and trimmed here so the UNIQUE index on users.email is actually
- * case-insensitive: "A@b.com" and "a@b.com" must not both be storable.
- */
+
 export const email = z.string().trim().toLowerCase().email();
 
-/**
- * Length is the policy, not character classes: a long passphrase beats a short
- * string with a digit forced in. The upper bound keeps a megabyte "password"
- * from tying up scrypt.
- */
 export const password = z.string().min(8).max(128);
 
 export const ROLES = ['user', 'admin'];
 
-/**
- * Vietnamese mobile numbers, accepted as 0xxxxxxxxx, +84xxxxxxxxx or 84xxxxxxxxx
- * with spaces or dots, and stored as 0xxxxxxxxx so the UNIQUE index sees one
- * spelling per number.
- */
 export const phone = z
   .string()
   .transform((v) => v.replace(/[\s.-]/g, '').replace(/^(\+84|84)/, '0'))
@@ -43,7 +30,7 @@ export const createUserSchema = {
   body: z.object({
     name: z.string().trim().min(1).max(120),
     email,
-    password: password.optional(),
+    password: password.string(),
     role: z.enum(ROLES).optional(),
   }),
 };

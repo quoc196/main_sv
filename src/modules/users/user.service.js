@@ -2,39 +2,20 @@ import { query, transaction } from '../../db/index.js';
 import ApiError from '../../utils/ApiError.js';
 import { hashPassword } from '../../utils/password.js';
 
-/**
- * The repository for `users`. Controllers depend on these signatures, not on
- * how the rows are fetched, so this is the only file that knows any SQL.
- */
 
-/** Postgres raises this when a UNIQUE constraint rejects a row. */
 const UNIQUE_VIOLATION = '23505';
 
-// snake_case in the database, camelCase on the wire — aliased once, here.
-// password_hash is deliberately absent: nothing selected through COLUMNS can
-// leak it into a response.
 export const COLUMNS =
   'id, name, email, role, phone, avatar_url AS "avatarUrl", ' +
   'created_at AS "createdAt", updated_at AS "updatedAt"';
 
-/**
- * `%` and `_` are ILIKE wildcards, so a search for "a_b" would otherwise match
- * "axb". Escaping them keeps the query literal, which is what a user typing in
- * a search box expects.
- */
 const escapeLike = (value) => value.replace(/[\\%_]/g, '\\$&');
 
-/**
- * A leading `%` means no index can serve this; it is fine at demo scale. For a
- * real table, add pg_trgm and a GIN index on (name, email) instead.
- */
 const SEARCH_FILTER = '($1::text IS NULL OR name ILIKE $1 OR email ILIKE $1)';
 
 export async function list({ page, limit, q }) {
   const pattern = q ? `%${escapeLike(q)}%` : null;
 
-  // Ordered by (created_at, id) so the sort is total: without the id tiebreak,
-  // rows sharing a timestamp could repeat or vanish across pages.
   const [items, counted] = await Promise.all([
     query(
       `SELECT ${COLUMNS}
@@ -59,7 +40,6 @@ export async function getById(id) {
   return rows[0];
 }
 
-/** For login only: the one read that returns the hash, kept out of COLUMNS. */
 export async function findCredentialsByEmail(email) {
   const { rows } = await query(
     `SELECT ${COLUMNS}, password_hash AS "passwordHash" FROM users WHERE email = $1`,
