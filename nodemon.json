@@ -1,0 +1,12 @@
+{
+  "watch": [
+    "src",
+    ".env.development",
+    ".env.development.local",
+    ".env.staging",
+    ".env.staging.local"
+  ],
+  "ext": "js,json",
+  "signal": "SIGTERM",
+  "delay": 300
+}

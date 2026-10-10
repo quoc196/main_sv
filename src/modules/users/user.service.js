@@ -14,7 +14,8 @@ const UNIQUE_VIOLATION = '23505';
 // password_hash is deliberately absent: nothing selected through COLUMNS can
 // leak it into a response.
 export const COLUMNS =
-  'id, name, email, role, created_at AS "createdAt", updated_at AS "updatedAt"';
+  'id, name, email, role, phone, avatar_url AS "avatarUrl", ' +
+  'created_at AS "createdAt", updated_at AS "updatedAt"';
 
 /**
  * `%` and `_` are ILIKE wildcards, so a search for "a_b" would otherwise match
@@ -138,5 +139,48 @@ export async function remove(id) {
 
   if (!rowCount) {
     throw ApiError.notFound(`User ${id} not found`, { userMessage: 'Không tìm thấy user' });
+  }
+}
+
+/**
+ * A user editing their own profile. `phone: null` clears it; any change to the
+ * number drops its verification, since the old proof was for another number.
+ */
+export async function updateProfile(id, patch) {
+  const sets = [];
+  const params = [id];
+  const set = (column, value) => {
+    params.push(value);
+    sets.push(`${column} = $${params.length}`);
+  };
+
+  if (patch.name !== undefined) set('name', patch.name);
+  if (patch.avatarUrl !== undefined) set('avatar_url', patch.avatarUrl);
+  if (patch.phone !== undefined) {
+    set('phone', patch.phone);
+    sets.push(
+      'phone_verified_at = CASE WHEN phone IS DISTINCT FROM $' +
+        params.length +
+        ' THEN NULL ELSE phone_verified_at END'
+    );
+  }
+
+  try {
+    const { rows } = await query(
+      `UPDATE users SET ${sets.join(', ')}, updated_at = now() WHERE id = $1 RETURNING ${COLUMNS}`,
+      params
+    );
+    if (!rows.length) {
+      throw ApiError.notFound(`User ${id} not found`, { userMessage: 'Không tìm thấy user' });
+    }
+    return rows[0];
+  } catch (err) {
+    if (err.code === UNIQUE_VIOLATION) {
+      throw ApiError.conflict(`Phone ${patch.phone} is already taken`, {
+        userMessage: 'Số điện thoại này đã được sử dụng',
+        cause: err,
+      });
+    }
+    throw err;
   }
 }

@@ -5,7 +5,12 @@ import { requireAuth } from '../../middlewares/auth.js';
 import rateLimiter from '../../middlewares/rateLimiter.js';
 import validate from '../../middlewares/validate.js';
 import * as controller from './auth.controller.js';
-import { loginSchema, refreshTokenSchema, registerSchema } from './auth.validation.js';
+import {
+  loginSchema,
+  refreshTokenSchema,
+  registerSchema,
+  updateProfileSchema,
+} from './auth.validation.js';
 
 const router = Router();
 
@@ -19,5 +24,6 @@ router.post('/refresh', validate(refreshTokenSchema), controller.refresh);
 // Needs only the refresh token: logging out must work after the access token expired.
 router.post('/logout', validate(refreshTokenSchema), controller.logout);
 router.get('/me', requireAuth, controller.me);
+router.patch('/me', requireAuth, validate(updateProfileSchema), controller.updateMe);
 
 export default router;

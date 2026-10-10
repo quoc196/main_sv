@@ -27,3 +27,14 @@ export function requireRole(...roles) {
     next(ApiError.forbidden(`Role "${req.user?.role}" is not one of: ${roles.join(', ')}`));
   };
 }
+
+/**
+ * For routes that serve everyone but show more to some callers (an owner
+ * seeing their own pending listing). No header: anonymous. A header that is
+ * present but bad still fails, so an expired token gets code 12 and the
+ * client refreshes instead of silently browsing logged-out.
+ */
+export function optionalAuth(req, res, next) {
+  if (!req.get('authorization')) return next();
+  return requireAuth(req, res, next);
+}

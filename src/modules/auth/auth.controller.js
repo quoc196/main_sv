@@ -22,3 +22,9 @@ export const logout = catchAsync(async (req, res) => {
 export const me = catchAsync(async (req, res) => {
   return res.ok(await userService.getById(req.user.id));
 });
+
+export const updateMe = catchAsync(async (req, res) => {
+  return res.ok(await userService.updateProfile(req.user.id, req.body), {
+    message: 'Cập nhật thông tin thành công',
+  });
+});

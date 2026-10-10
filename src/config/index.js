@@ -53,6 +53,17 @@ const schema = z.object({
 
   REDIS_URL: z.string().optional(),
 
+  // Listing photos go to Supabase Storage. Unset: the app runs, and only the
+  // image upload endpoints answer 503. The service-role key bypasses storage
+  // policies, so it lives in the deploy target's env and never in a file.
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+  STORAGE_BUCKET: z.string().default('listings'),
+
+  // How long an approved listing stays searchable before the owner has to
+  // refresh it. Short enough that a rented room does not linger for months.
+  LISTING_TTL_DAYS: z.coerce.number().int().positive().max(90).default(14),
+
   // Signs access tokens. Every environment needs one now that auth exists;
   // .env.development carries a throwaway value.
   JWT_SECRET: z.string().min(16),
@@ -135,6 +146,16 @@ const config = {
 
   redis: {
     url: env.REDIS_URL,
+  },
+
+  storage: {
+    url: env.SUPABASE_URL?.replace(/\/+$/, ''),
+    serviceKey: env.SUPABASE_SERVICE_ROLE_KEY,
+    bucket: env.STORAGE_BUCKET,
+  },
+
+  listings: {
+    ttlDays: env.LISTING_TTL_DAYS,
   },
 
   jwt: {

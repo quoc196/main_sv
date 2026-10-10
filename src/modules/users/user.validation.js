@@ -15,6 +15,16 @@ export const password = z.string().min(8).max(128);
 
 export const ROLES = ['user', 'admin'];
 
+/**
+ * Vietnamese mobile numbers, accepted as 0xxxxxxxxx, +84xxxxxxxxx or 84xxxxxxxxx
+ * with spaces or dots, and stored as 0xxxxxxxxx so the UNIQUE index sees one
+ * spelling per number.
+ */
+export const phone = z
+  .string()
+  .transform((v) => v.replace(/[\s.-]/g, '').replace(/^(\+84|84)/, '0'))
+  .pipe(z.string().regex(/^0[35789]\d{8}$/, 'Số điện thoại di động Việt Nam không hợp lệ'));
+
 export const listUsersSchema = {
   query: z.object({
     page: z.coerce.number().int().positive().default(1),
