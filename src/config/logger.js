@@ -7,6 +7,7 @@ const redact = {
     'req.headers.cookie',
     'req.body.password',
     'req.body.newPassword',
+    'req.body.refreshToken',
     'res.headers["set-cookie"]',
   ],
   censor: '[redacted]',

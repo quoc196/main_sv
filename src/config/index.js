@@ -32,6 +32,9 @@ const schema = z.object({
 
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
+  // Per IP, per RATE_LIMIT_WINDOW_MS, on login and register only: those are
+  // what a password-guessing script hammers.
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
 
   // Unset: the app still boots and /health* works, but DB-backed routes answer 503.
   DATABASE_URL: z.string().optional(),
@@ -50,8 +53,27 @@ const schema = z.object({
 
   REDIS_URL: z.string().optional(),
 
-  JWT_SECRET: z.string().min(16).optional(),
-  JWT_EXPIRES_IN: z.string().default('1d'),
+  // Listing photos go to Supabase Storage. Unset: the app runs, and only the
+  // image upload endpoints answer 503. The service-role key bypasses storage
+  // policies, so it lives in the deploy target's env and never in a file.
+  SUPABASE_URL: z.string().url().optional(),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+  STORAGE_BUCKET: z.string().default('listings'),
+
+  // How long an approved listing stays searchable before the owner has to
+  // refresh it. Short enough that a rented room does not linger for months.
+  LISTING_TTL_DAYS: z.coerce.number().int().positive().max(90).default(14),
+
+  // Signs access tokens. Every environment needs one now that auth exists;
+  // .env.development carries a throwaway value.
+  JWT_SECRET: z.string().min(16),
+  // Short on purpose: an access token cannot be revoked, only outlived. The
+  // refresh token is what keeps a session alive.
+  JWT_EXPIRES_IN: z
+    .string()
+    .regex(/^\d+[smhd]$/, 'use a number plus s, m, h or d, e.g. 15m')
+    .default('15m'),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().max(365).default(30),
 
   SHUTDOWN_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
 });
@@ -111,6 +133,7 @@ const config = {
   rateLimit: {
     windowMs: env.RATE_LIMIT_WINDOW_MS,
     max: env.RATE_LIMIT_MAX,
+    authMax: env.AUTH_RATE_LIMIT_MAX,
   },
 
   db: {
@@ -125,17 +148,22 @@ const config = {
     url: env.REDIS_URL,
   },
 
+  storage: {
+    url: env.SUPABASE_URL?.replace(/\/+$/, ''),
+    serviceKey: env.SUPABASE_SERVICE_ROLE_KEY,
+    bucket: env.STORAGE_BUCKET,
+  },
+
+  listings: {
+    ttlDays: env.LISTING_TTL_DAYS,
+  },
+
   jwt: {
     secret: env.JWT_SECRET,
     expiresIn: env.JWT_EXPIRES_IN,
+    refreshTtlDays: env.REFRESH_TOKEN_TTL_DAYS,
   },
 };
-
-// Secrets are only truly optional outside production.
-if (config.isProduction && !config.jwt.secret) {
-  console.error('[config] JWT_SECRET is required when NODE_ENV=production.');
-  process.exit(1);
-}
 
 // Booting without a database is a local convenience; production would come up
 // "healthy" and then 503 every real request.
